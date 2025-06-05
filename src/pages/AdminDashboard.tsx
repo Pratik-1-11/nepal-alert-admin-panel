@@ -1,8 +1,7 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, MapPin, Bell, Plus, User, Users, Phone, News } from 'lucide-react';
+import { AlertTriangle, MapPin, Bell, Plus, User, Users, Phone, Newspaper } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NotificationsManager from '@/components/admin/NotificationsManager';
 import DisasterUpdatesManager from '@/components/admin/DisasterUpdatesManager';
@@ -99,7 +98,7 @@ const AdminDashboard = () => {
                   Users
                 </TabsTrigger>
                 <TabsTrigger value="news" className="flex items-center gap-2">
-                  <News className="h-4 w-4" />
+                  <Newspaper className="h-4 w-4" />
                   News
                 </TabsTrigger>
                 <TabsTrigger value="contacts" className="flex items-center gap-2">
