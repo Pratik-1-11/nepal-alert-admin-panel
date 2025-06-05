@@ -1,8 +1,8 @@
-
 import { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { DisasterLocation } from '@/types/disaster';
+import { fetchNepalEarthquakes, EarthquakeData } from '@/services/earthquakeService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,13 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Plus, MapPin, Activity } from 'lucide-react';
+import { Edit, Trash2, Plus, MapPin, Activity, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const DisasterLocationsManager = () => {
   const [locations, setLocations] = useState<DisasterLocation[]>([]);
+  const [earthquakeData, setEarthquakeData] = useState<EarthquakeData[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<DisasterLocation | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<DisasterLocation>>({
     title: '',
     description: '',
@@ -36,7 +38,61 @@ const DisasterLocationsManager = () => {
 
   useEffect(() => {
     fetchLocations();
+    loadEarthquakeData();
   }, []);
+
+  const loadEarthquakeData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchNepalEarthquakes();
+      setEarthquakeData(data);
+      toast({
+        title: 'Success',
+        description: `Loaded ${data.length} recent earthquakes from USGS`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load earthquake data from USGS',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const importEarthquakeAsLocation = async (earthquake: EarthquakeData) => {
+    try {
+      const locationData = {
+        title: earthquake.place || `Earthquake M${earthquake.magnitude}`,
+        description: `Earthquake detected by USGS with magnitude ${earthquake.magnitude}`,
+        latitude: earthquake.latitude,
+        longitude: earthquake.longitude,
+        magnitude: earthquake.magnitude,
+        depth: earthquake.depth,
+        affectedRadius: Math.round(earthquake.magnitude * 10), // Rough estimate
+        severity: earthquake.magnitude >= 6 ? 'critical' : earthquake.magnitude >= 5 ? 'high' : earthquake.magnitude >= 4 ? 'medium' : 'low',
+        status: 'active',
+        type: 'earthquake',
+        source: 'USGS',
+        sourceId: earthquake.id,
+        timestamp: Timestamp.fromMillis(earthquake.time),
+      };
+
+      await addDoc(collection(db, 'disaster_locations'), locationData);
+      toast({
+        title: 'Success',
+        description: 'Earthquake imported as disaster location',
+      });
+      fetchLocations();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to import earthquake data',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const fetchLocations = async () => {
     try {
@@ -156,178 +212,215 @@ const DisasterLocationsManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Disaster Locations Management</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Add Location
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingLocation ? 'Edit Disaster Location' : 'Add New Disaster Location'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Enter disaster title"
-                  />
+        <div className="flex gap-2">
+          <Button onClick={loadEarthquakeData} disabled={isLoading} variant="outline">
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh USGS Data
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Add Location
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingLocation ? 'Edit Disaster Location' : 'Add New Disaster Location'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="Enter disaster title"
+                    />
+                  </div>
+                  
+                  <div className="col-span-2">
+                    <Label htmlFor="description">Description *</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Enter detailed description"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="latitude">Latitude</Label>
+                    <Input
+                      id="latitude"
+                      type="number"
+                      step="any"
+                      value={formData.latitude}
+                      onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
+                      placeholder="e.g., 27.7172"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="longitude">Longitude</Label>
+                    <Input
+                      id="longitude"
+                      type="number"
+                      step="any"
+                      value={formData.longitude}
+                      onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
+                      placeholder="e.g., 85.3240"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="magnitude">Magnitude</Label>
+                    <Input
+                      id="magnitude"
+                      type="number"
+                      step="0.1"
+                      value={formData.magnitude}
+                      onChange={(e) => setFormData({ ...formData, magnitude: parseFloat(e.target.value) })}
+                      placeholder="e.g., 4.5"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="depth">Depth (km)</Label>
+                    <Input
+                      id="depth"
+                      type="number"
+                      value={formData.depth}
+                      onChange={(e) => setFormData({ ...formData, depth: parseInt(e.target.value) })}
+                      placeholder="e.g., 10"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="affectedRadius">Affected Radius (km)</Label>
+                    <Input
+                      id="affectedRadius"
+                      type="number"
+                      value={formData.affectedRadius}
+                      onChange={(e) => setFormData({ ...formData, affectedRadius: parseInt(e.target.value) })}
+                      placeholder="e.g., 50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="type">Disaster Type</Label>
+                    <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as any })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="earthquake">Earthquake</SelectItem>
+                        <SelectItem value="flood">Flood</SelectItem>
+                        <SelectItem value="landslide">Landslide</SelectItem>
+                        <SelectItem value="fire">Fire</SelectItem>
+                        <SelectItem value="storm">Storm</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="severity">Severity</Label>
+                    <Select value={formData.severity} onValueChange={(value) => setFormData({ ...formData, severity: value as any })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="critical">Critical</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as any })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                        <SelectItem value="resolved">Resolved</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="source">Source *</Label>
+                    <Input
+                      id="source"
+                      value={formData.source}
+                      onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                      placeholder="e.g., USGS, NSC"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="sourceId">Source ID</Label>
+                    <Input
+                      id="sourceId"
+                      value={formData.sourceId}
+                      onChange={(e) => setFormData({ ...formData, sourceId: e.target.value })}
+                      placeholder="e.g., us7000pvip"
+                    />
+                  </div>
                 </div>
                 
-                <div className="col-span-2">
-                  <Label htmlFor="description">Description *</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Enter detailed description"
-                  />
+                <div className="flex gap-2">
+                  <Button type="submit" className="flex-1">
+                    {editingLocation ? 'Update' : 'Create'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
                 </div>
-                
-                <div>
-                  <Label htmlFor="latitude">Latitude</Label>
-                  <Input
-                    id="latitude"
-                    type="number"
-                    step="any"
-                    value={formData.latitude}
-                    onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
-                    placeholder="e.g., 27.7172"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="longitude">Longitude</Label>
-                  <Input
-                    id="longitude"
-                    type="number"
-                    step="any"
-                    value={formData.longitude}
-                    onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
-                    placeholder="e.g., 85.3240"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="magnitude">Magnitude</Label>
-                  <Input
-                    id="magnitude"
-                    type="number"
-                    step="0.1"
-                    value={formData.magnitude}
-                    onChange={(e) => setFormData({ ...formData, magnitude: parseFloat(e.target.value) })}
-                    placeholder="e.g., 4.5"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="depth">Depth (km)</Label>
-                  <Input
-                    id="depth"
-                    type="number"
-                    value={formData.depth}
-                    onChange={(e) => setFormData({ ...formData, depth: parseInt(e.target.value) })}
-                    placeholder="e.g., 10"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="affectedRadius">Affected Radius (km)</Label>
-                  <Input
-                    id="affectedRadius"
-                    type="number"
-                    value={formData.affectedRadius}
-                    onChange={(e) => setFormData({ ...formData, affectedRadius: parseInt(e.target.value) })}
-                    placeholder="e.g., 50"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="type">Disaster Type</Label>
-                  <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as any })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="earthquake">Earthquake</SelectItem>
-                      <SelectItem value="flood">Flood</SelectItem>
-                      <SelectItem value="landslide">Landslide</SelectItem>
-                      <SelectItem value="fire">Fire</SelectItem>
-                      <SelectItem value="storm">Storm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="severity">Severity</Label>
-                  <Select value={formData.severity} onValueChange={(value) => setFormData({ ...formData, severity: value as any })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as any })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <Label htmlFor="source">Source *</Label>
-                  <Input
-                    id="source"
-                    value={formData.source}
-                    onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                    placeholder="e.g., USGS, NSC"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="sourceId">Source ID</Label>
-                  <Input
-                    id="sourceId"
-                    value={formData.sourceId}
-                    onChange={(e) => setFormData({ ...formData, sourceId: e.target.value })}
-                    placeholder="e.g., us7000pvip"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button type="submit" className="flex-1">
-                  {editingLocation ? 'Update' : 'Create'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
+      {/* USGS Earthquake Data Section */}
+      {earthquakeData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Earthquakes in Nepal (USGS Data)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 max-h-60 overflow-y-auto">
+              {earthquakeData.slice(0, 10).map((earthquake) => (
+                <div key={earthquake.id} className="flex items-center justify-between p-2 border rounded">
+                  <div className="flex-1">
+                    <div className="font-medium">M{earthquake.magnitude.toFixed(1)} - {earthquake.place}</div>
+                    <div className="text-sm text-gray-500">
+                      {new Date(earthquake.time).toLocaleString()} • Depth: {earthquake.depth.toFixed(1)}km
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => importEarthquakeAsLocation(earthquake)}
+                  >
+                    Import
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Existing Disaster Locations */}
       <div className="grid gap-4">
         {locations.map((location) => (
           <Card key={location.id} className="border-l-4 border-l-red-500">

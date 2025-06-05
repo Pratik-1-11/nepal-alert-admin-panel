@@ -34,7 +34,7 @@ export function AdminSidebar({ activeTab, onTabChange }: AdminSidebarProps) {
   const collapsed = state === 'collapsed';
 
   return (
-    <Sidebar className={collapsed ? "w-14" : "w-60"} collapsible>
+    <Sidebar className={collapsed ? "w-14" : "w-60"}>
       <SidebarTrigger className="m-2 self-end" />
       
       <SidebarContent>
