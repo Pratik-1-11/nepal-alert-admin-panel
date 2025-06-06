@@ -28,13 +28,9 @@ const DisasterLocationsManager = () => {
     latitude: 0,
     longitude: 0,
     magnitude: 0,
-    depth: 0,
-    affectedRadius: 0,
     severity: 'medium',
-    status: 'active',
     type: 'earthquake',
     source: '',
-    sourceId: '',
   });
   const { toast } = useToast();
 
@@ -67,17 +63,13 @@ const DisasterLocationsManager = () => {
     try {
       const locationData = {
         title: earthquake.place || `Earthquake M${earthquake.magnitude}`,
-        description: `Earthquake detected by USGS with magnitude ${earthquake.magnitude}`,
+        description: `Magnitude ${earthquake.magnitude} earthquake at a depth of ${earthquake.depth} km`,
         latitude: earthquake.latitude,
         longitude: earthquake.longitude,
         magnitude: earthquake.magnitude,
-        depth: earthquake.depth,
-        affectedRadius: Math.round(earthquake.magnitude * 10), // Rough estimate
         severity: earthquake.magnitude >= 6 ? 'critical' : earthquake.magnitude >= 5 ? 'high' : earthquake.magnitude >= 4 ? 'medium' : 'low',
-        status: 'active',
         type: 'earthquake',
         source: 'USGS',
-        sourceId: earthquake.id,
         timestamp: Timestamp.fromMillis(earthquake.time),
       };
 
@@ -179,8 +171,7 @@ const DisasterLocationsManager = () => {
       setEditingLocation(null);
       setFormData({
         title: '', description: '', latitude: 0, longitude: 0, magnitude: 0,
-        depth: 0, affectedRadius: 0, severity: 'medium', status: 'active',
-        type: 'earthquake', source: '', sourceId: '',
+        severity: 'medium', type: 'earthquake', source: '',
       });
       fetchLocations();
     } catch (error) {
@@ -222,15 +213,6 @@ const DisasterLocationsManager = () => {
       case 'high': return 'bg-orange-100 text-orange-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-red-100 text-red-800';
-      case 'inactive': return 'bg-gray-100 text-gray-800';
-      case 'resolved': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -447,9 +429,6 @@ const DisasterLocationsManager = () => {
                     <Badge className={getSeverityColor(location.severity)}>
                       {location.severity}
                     </Badge>
-                    <Badge className={getStatusColor(location.status)}>
-                      {location.status}
-                    </Badge>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -464,7 +443,7 @@ const DisasterLocationsManager = () => {
             </CardHeader>
             <CardContent>
               <p className="text-gray-700 mb-3">{location.description}</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                 <div className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
                   <span>{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}</span>
@@ -475,18 +454,13 @@ const DisasterLocationsManager = () => {
                     <span>Mag: {location.magnitude}</span>
                   </div>
                 )}
-                {location.type === 'earthquake' && (
-                  <div>
-                    <span>Depth: {location.depth} km</span>
-                  </div>
-                )}
                 <div>
-                  <span>Radius: {location.affectedRadius} km</span>
+                  <span>Source: {location.source}</span>
                 </div>
               </div>
               <div className="flex justify-between items-center mt-3">
                 <span className="text-sm text-gray-500">
-                  {location.timestamp.toLocaleString()} • {location.source}
+                  {location.timestamp.toLocaleString()}
                 </span>
               </div>
             </CardContent>
