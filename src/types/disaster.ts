@@ -18,16 +18,12 @@ export interface DisasterUpdate {
 
 export interface DisasterLocation {
   id?: string;
-  affectedRadius: number;
-  depth: number;
   description: string;
   latitude: number;
   longitude: number;
   magnitude: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
   source: string;
-  sourceId: string;
-  status: 'active' | 'inactive' | 'resolved';
   timestamp: Date;
   title: string;
   type: 'earthquake' | 'flood' | 'landslide' | 'fire' | 'storm';

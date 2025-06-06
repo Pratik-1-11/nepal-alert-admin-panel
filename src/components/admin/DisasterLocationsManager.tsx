@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, Timestamp } fro
 import { db } from '@/lib/firebase';
 import { DisasterLocation } from '@/types/disaster';
 import { fetchNepalEarthquakes, EarthquakeData } from '@/services/earthquakeService';
-import { nepalCities, City } from '@/data/nepalCities';
+import { nepalLocations, Location } from '@/data/nepalLocations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, Plus, MapPin, Activity, RefreshCw } from 'lucide-react';
+import { Edit, Trash2, Plus, MapPin, Activity, RefreshCw, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const DisasterLocationsManager = () => {
@@ -21,6 +21,7 @@ const DisasterLocationsManager = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<DisasterLocation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchCity, setSearchCity] = useState('');
   const [formData, setFormData] = useState<Partial<DisasterLocation>>({
     title: '',
     description: '',
@@ -113,17 +114,24 @@ const DisasterLocationsManager = () => {
     }
   };
 
-  const handleCitySelect = (cityName: string) => {
-    const city = nepalCities.find(c => c.name === cityName);
-    if (city) {
+  const filteredLocations = nepalLocations.filter(location =>
+    location.name.toLowerCase().includes(searchCity.toLowerCase()) ||
+    location.district?.toLowerCase().includes(searchCity.toLowerCase()) ||
+    location.province?.toLowerCase().includes(searchCity.toLowerCase())
+  );
+
+  const handleLocationSelect = (locationName: string) => {
+    const location = nepalLocations.find(l => l.name === locationName);
+    if (location) {
       setFormData({
         ...formData,
-        latitude: city.latitude,
-        longitude: city.longitude,
+        latitude: location.latitude,
+        longitude: location.longitude,
       });
+      setSearchCity('');
       toast({
-        title: 'City Selected',
-        description: `Coordinates set to ${city.name}`,
+        title: 'Location Selected',
+        description: `Coordinates set to ${location.name}, ${location.district}`,
       });
     }
   };
@@ -142,13 +150,15 @@ const DisasterLocationsManager = () => {
 
     try {
       const locationData = {
-        ...formData,
-        timestamp: Timestamp.now(),
+        title: formData.title,
+        description: formData.description,
         latitude: Number(formData.latitude),
         longitude: Number(formData.longitude),
         magnitude: formData.type === 'earthquake' ? Number(formData.magnitude) : 0,
-        depth: formData.type === 'earthquake' ? Number(formData.depth) : 0,
-        affectedRadius: Number(formData.affectedRadius),
+        severity: formData.severity,
+        source: formData.source,
+        type: formData.type,
+        timestamp: Timestamp.now(),
       };
 
       if (editingLocation) {
@@ -174,6 +184,7 @@ const DisasterLocationsManager = () => {
       });
       fetchLocations();
     } catch (error) {
+      console.error('Error saving location:', error);
       toast({
         title: 'Error',
         description: 'Failed to save disaster location',
@@ -225,7 +236,6 @@ const DisasterLocationsManager = () => {
   };
 
   const requiresMagnitude = formData.type === 'earthquake';
-  const requiresDepth = formData.type === 'earthquake';
 
   return (
     <div className="space-y-6">
@@ -257,7 +267,7 @@ const DisasterLocationsManager = () => {
                       id="title"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="Enter disaster title"
+                      placeholder="e.g., M 4.2 - 93 km ENE of Lobuche, Nepal"
                     />
                   </div>
                   
@@ -267,61 +277,65 @@ const DisasterLocationsManager = () => {
                       id="description"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Enter detailed description"
+                      placeholder="e.g., Magnitude 4.2 earthquake at a depth of 71.393 km"
                     />
                   </div>
 
                   <div className="col-span-2">
-                    <Label>Quick City Selection</Label>
-                    <Select onValueChange={handleCitySelect}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a city to auto-fill coordinates" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {nepalCities
-                          .filter(city => city.type === 'provincial_capital')
-                          .map((city) => (
-                            <SelectItem key={city.name} value={city.name}>
-                              📍 {city.name} ({city.province})
-                            </SelectItem>
-                          ))}
-                        {nepalCities
-                          .filter(city => city.type === 'major_city')
-                          .map((city) => (
-                            <SelectItem key={city.name} value={city.name}>
-                              🏘️ {city.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Location Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search cities, districts, provinces..."
+                        value={searchCity}
+                        onChange={(e) => setSearchCity(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    {searchCity && filteredLocations.length > 0 && (
+                      <div className="mt-2 max-h-40 overflow-y-auto border rounded-md">
+                        {filteredLocations.slice(0, 10).map((location) => (
+                          <div
+                            key={`${location.name}-${location.district}`}
+                            className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                            onClick={() => handleLocationSelect(location.name)}
+                          >
+                            <div className="font-medium">{location.name}</div>
+                            <div className="text-sm text-gray-500">
+                              {location.district}, {location.province} • {location.type}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   <div>
-                    <Label htmlFor="latitude">Latitude</Label>
+                    <Label htmlFor="latitude">Latitude *</Label>
                     <Input
                       id="latitude"
                       type="number"
                       step="any"
                       value={formData.latitude}
                       onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
-                      placeholder="e.g., 27.7172"
+                      placeholder="e.g., 28.1352"
                     />
                   </div>
                   
                   <div>
-                    <Label htmlFor="longitude">Longitude</Label>
+                    <Label htmlFor="longitude">Longitude *</Label>
                     <Input
                       id="longitude"
                       type="number"
                       step="any"
                       value={formData.longitude}
                       onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
-                      placeholder="e.g., 85.3240"
+                      placeholder="e.g., 87.7324"
                     />
                   </div>
                   
                   <div>
-                    <Label htmlFor="type">Disaster Type</Label>
+                    <Label htmlFor="type">Disaster Type *</Label>
                     <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as any })}>
                       <SelectTrigger>
                         <SelectValue />
@@ -338,44 +352,20 @@ const DisasterLocationsManager = () => {
 
                   {requiresMagnitude && (
                     <div>
-                      <Label htmlFor="magnitude">Magnitude</Label>
+                      <Label htmlFor="magnitude">Magnitude *</Label>
                       <Input
                         id="magnitude"
                         type="number"
                         step="0.1"
                         value={formData.magnitude}
                         onChange={(e) => setFormData({ ...formData, magnitude: parseFloat(e.target.value) })}
-                        placeholder="e.g., 4.5"
-                      />
-                    </div>
-                  )}
-                  
-                  {requiresDepth && (
-                    <div>
-                      <Label htmlFor="depth">Depth (km)</Label>
-                      <Input
-                        id="depth"
-                        type="number"
-                        value={formData.depth}
-                        onChange={(e) => setFormData({ ...formData, depth: parseInt(e.target.value) })}
-                        placeholder="e.g., 10"
+                        placeholder="e.g., 4.2"
                       />
                     </div>
                   )}
                   
                   <div>
-                    <Label htmlFor="affectedRadius">Affected Radius (km)</Label>
-                    <Input
-                      id="affectedRadius"
-                      type="number"
-                      value={formData.affectedRadius}
-                      onChange={(e) => setFormData({ ...formData, affectedRadius: parseInt(e.target.value) })}
-                      placeholder="e.g., 50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="severity">Severity</Label>
+                    <Label htmlFor="severity">Severity *</Label>
                     <Select value={formData.severity} onValueChange={(value) => setFormData({ ...formData, severity: value as any })}>
                       <SelectTrigger>
                         <SelectValue />
@@ -390,36 +380,12 @@ const DisasterLocationsManager = () => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as any })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="resolved">Resolved</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div>
                     <Label htmlFor="source">Source *</Label>
                     <Input
                       id="source"
                       value={formData.source}
                       onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                      placeholder="e.g., USGS, NSC"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="sourceId">Source ID</Label>
-                    <Input
-                      id="sourceId"
-                      value={formData.sourceId}
-                      onChange={(e) => setFormData({ ...formData, sourceId: e.target.value })}
-                      placeholder="e.g., us7000pvip"
+                      placeholder="e.g., usgs, nsc"
                     />
                   </div>
                 </div>
