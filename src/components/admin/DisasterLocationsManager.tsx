@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -279,7 +278,6 @@ const DisasterLocationsManager = () => {
                         <SelectValue placeholder="Select a city to auto-fill coordinates" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">-- Select City --</SelectItem>
                         {nepalCities
                           .filter(city => city.type === 'provincial_capital')
                           .map((city) => (
