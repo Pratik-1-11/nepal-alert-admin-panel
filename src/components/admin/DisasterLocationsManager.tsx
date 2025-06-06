@@ -1,8 +1,10 @@
+
 import { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { DisasterLocation } from '@/types/disaster';
 import { fetchNepalEarthquakes, EarthquakeData } from '@/services/earthquakeService';
+import { nepalCities, City } from '@/data/nepalCities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -112,6 +114,21 @@ const DisasterLocationsManager = () => {
     }
   };
 
+  const handleCitySelect = (cityName: string) => {
+    const city = nepalCities.find(c => c.name === cityName);
+    if (city) {
+      setFormData({
+        ...formData,
+        latitude: city.latitude,
+        longitude: city.longitude,
+      });
+      toast({
+        title: 'City Selected',
+        description: `Coordinates set to ${city.name}`,
+      });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -130,8 +147,8 @@ const DisasterLocationsManager = () => {
         timestamp: Timestamp.now(),
         latitude: Number(formData.latitude),
         longitude: Number(formData.longitude),
-        magnitude: Number(formData.magnitude),
-        depth: Number(formData.depth),
+        magnitude: formData.type === 'earthquake' ? Number(formData.magnitude) : 0,
+        depth: formData.type === 'earthquake' ? Number(formData.depth) : 0,
         affectedRadius: Number(formData.affectedRadius),
       };
 
@@ -208,6 +225,9 @@ const DisasterLocationsManager = () => {
     }
   };
 
+  const requiresMagnitude = formData.type === 'earthquake';
+  const requiresDepth = formData.type === 'earthquake';
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -251,6 +271,32 @@ const DisasterLocationsManager = () => {
                       placeholder="Enter detailed description"
                     />
                   </div>
+
+                  <div className="col-span-2">
+                    <Label>Quick City Selection</Label>
+                    <Select onValueChange={handleCitySelect}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a city to auto-fill coordinates" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">-- Select City --</SelectItem>
+                        {nepalCities
+                          .filter(city => city.type === 'provincial_capital')
+                          .map((city) => (
+                            <SelectItem key={city.name} value={city.name}>
+                              📍 {city.name} ({city.province})
+                            </SelectItem>
+                          ))}
+                        {nepalCities
+                          .filter(city => city.type === 'major_city')
+                          .map((city) => (
+                            <SelectItem key={city.name} value={city.name}>
+                              🏘️ {city.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   
                   <div>
                     <Label htmlFor="latitude">Latitude</Label>
@@ -277,27 +323,47 @@ const DisasterLocationsManager = () => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="magnitude">Magnitude</Label>
-                    <Input
-                      id="magnitude"
-                      type="number"
-                      step="0.1"
-                      value={formData.magnitude}
-                      onChange={(e) => setFormData({ ...formData, magnitude: parseFloat(e.target.value) })}
-                      placeholder="e.g., 4.5"
-                    />
+                    <Label htmlFor="type">Disaster Type</Label>
+                    <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as any })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="earthquake">Earthquake</SelectItem>
+                        <SelectItem value="flood">Flood</SelectItem>
+                        <SelectItem value="landslide">Landslide</SelectItem>
+                        <SelectItem value="fire">Fire/Bushfire</SelectItem>
+                        <SelectItem value="storm">Storm</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
+
+                  {requiresMagnitude && (
+                    <div>
+                      <Label htmlFor="magnitude">Magnitude</Label>
+                      <Input
+                        id="magnitude"
+                        type="number"
+                        step="0.1"
+                        value={formData.magnitude}
+                        onChange={(e) => setFormData({ ...formData, magnitude: parseFloat(e.target.value) })}
+                        placeholder="e.g., 4.5"
+                      />
+                    </div>
+                  )}
                   
-                  <div>
-                    <Label htmlFor="depth">Depth (km)</Label>
-                    <Input
-                      id="depth"
-                      type="number"
-                      value={formData.depth}
-                      onChange={(e) => setFormData({ ...formData, depth: parseInt(e.target.value) })}
-                      placeholder="e.g., 10"
-                    />
-                  </div>
+                  {requiresDepth && (
+                    <div>
+                      <Label htmlFor="depth">Depth (km)</Label>
+                      <Input
+                        id="depth"
+                        type="number"
+                        value={formData.depth}
+                        onChange={(e) => setFormData({ ...formData, depth: parseInt(e.target.value) })}
+                        placeholder="e.g., 10"
+                      />
+                    </div>
+                  )}
                   
                   <div>
                     <Label htmlFor="affectedRadius">Affected Radius (km)</Label>
@@ -308,22 +374,6 @@ const DisasterLocationsManager = () => {
                       onChange={(e) => setFormData({ ...formData, affectedRadius: parseInt(e.target.value) })}
                       placeholder="e.g., 50"
                     />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="type">Disaster Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as any })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="earthquake">Earthquake</SelectItem>
-                        <SelectItem value="flood">Flood</SelectItem>
-                        <SelectItem value="landslide">Landslide</SelectItem>
-                        <SelectItem value="fire">Fire</SelectItem>
-                        <SelectItem value="storm">Storm</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                   
                   <div>
@@ -455,13 +505,17 @@ const DisasterLocationsManager = () => {
                   <MapPin className="h-4 w-4" />
                   <span>{location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Activity className="h-4 w-4" />
-                  <span>Mag: {location.magnitude}</span>
-                </div>
-                <div>
-                  <span>Depth: {location.depth} km</span>
-                </div>
+                {location.type === 'earthquake' && (
+                  <div className="flex items-center gap-1">
+                    <Activity className="h-4 w-4" />
+                    <span>Mag: {location.magnitude}</span>
+                  </div>
+                )}
+                {location.type === 'earthquake' && (
+                  <div>
+                    <span>Depth: {location.depth} km</span>
+                  </div>
+                )}
                 <div>
                   <span>Radius: {location.affectedRadius} km</span>
                 </div>
