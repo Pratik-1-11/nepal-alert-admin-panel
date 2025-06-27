@@ -1,10 +1,20 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CloudRain, CloudDrizzle, MapPin, Calendar, RefreshCw } from 'lucide-react';
+import { CloudRain, CloudDrizzle, MapPin, Calendar, RefreshCw, Map } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers in Leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface WeatherData {
   coord: {
@@ -41,7 +51,11 @@ const RainPage = () => {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Kathmandu');
+  const [showPrecipitation, setShowPrecipitation] = useState(true);
   const { toast } = useToast();
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const precipitationLayerRef = useRef<L.TileLayer | null>(null);
 
   const API_KEY = 'a3cf90bbeab7a32511d2371fd3578fe1';
   const nepalCities = [
@@ -52,6 +66,59 @@ const RainPage = () => {
     { name: 'Birgunj', lat: 27.0104, lon: 84.8808 },
     { name: 'Dharan', lat: 26.8149, lon: 87.2824 }
   ];
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    // Create map centered on Nepal
+    mapInstanceRef.current = L.map(mapRef.current).setView([28.3949, 84.1240], 7);
+
+    // Add base tile layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(mapInstanceRef.current);
+
+    // Add precipitation layer
+    precipitationLayerRef.current = L.tileLayer(
+      `https://maps.openweathermap.org/maps/2.0/weather/PA0/{z}/{x}/{y}?appid=${API_KEY}`,
+      {
+        attribution: '© OpenWeatherMap',
+        opacity: 0.6
+      }
+    );
+
+    if (showPrecipitation) {
+      precipitationLayerRef.current.addTo(mapInstanceRef.current);
+    }
+
+    // Add markers for Nepal cities
+    nepalCities.forEach(city => {
+      const marker = L.marker([city.lat, city.lon]).addTo(mapInstanceRef.current!);
+      marker.bindPopup(`<b>${city.name}</b><br>Click to view weather data`);
+      marker.on('click', () => {
+        setSelectedCity(city.name);
+      });
+    });
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Toggle precipitation layer
+  useEffect(() => {
+    if (!mapInstanceRef.current || !precipitationLayerRef.current) return;
+
+    if (showPrecipitation) {
+      precipitationLayerRef.current.addTo(mapInstanceRef.current);
+    } else {
+      mapInstanceRef.current.removeLayer(precipitationLayerRef.current);
+    }
+  }, [showPrecipitation]);
 
   const fetchWeatherData = async (cityName: string) => {
     setLoading(true);
@@ -67,6 +134,11 @@ const RainPage = () => {
       
       const data = await response.json();
       setWeatherData(data);
+      
+      // Center map on selected city
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.setView([city.lat, city.lon], 10);
+      }
       
       toast({
         title: "Weather Data Updated",
@@ -118,22 +190,22 @@ const RainPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Nepal Precipitation Monitor</h1>
-          <p className="text-gray-600">Real-time rainfall and weather data across Nepal</p>
+          <p className="text-gray-600">Real-time rainfall and weather data across Nepal with interactive map</p>
         </div>
 
-        {/* City Selection */}
+        {/* City Selection and Map Controls */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Select Location
+              Select Location & Map Controls
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-4">
               {nepalCities.map((city) => (
                 <Button
                   key={city.name}
@@ -154,25 +226,34 @@ const RainPage = () => {
                 Refresh
               </Button>
             </div>
+            <div className="flex gap-2">
+              <Button
+                variant={showPrecipitation ? "default" : "outline"}
+                onClick={() => setShowPrecipitation(!showPrecipitation)}
+                className="flex items-center gap-2"
+              >
+                <Map className="h-4 w-4" />
+                {showPrecipitation ? 'Hide' : 'Show'} Precipitation Layer
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Weather Map Display */}
+        {/* Interactive Map */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Precipitation Map</CardTitle>
+            <CardTitle>Interactive Precipitation Map</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="bg-gray-100 rounded-lg p-4 text-center">
-              <p className="text-gray-600 mb-4">Interactive Weather Map</p>
-              <div className="bg-white rounded-lg p-8 border-dashed border-2 border-gray-300">
-                <p className="text-sm text-gray-500">
-                  Weather map tiles from OpenWeatherMap would be displayed here
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  API Endpoint: maps.openweathermap.org/maps/2.0/weather/PA0
-                </p>
-              </div>
+            <div 
+              ref={mapRef} 
+              className="w-full h-96 rounded-lg border"
+              style={{ minHeight: '400px' }}
+            />
+            <div className="mt-4 text-sm text-gray-600">
+              <p><strong>Blue areas:</strong> Precipitation zones (darker = heavier rain)</p>
+              <p><strong>Markers:</strong> Click on city markers to view detailed weather data</p>
+              <p><strong>Controls:</strong> Use mouse/touch to pan and zoom the map</p>
             </div>
           </CardContent>
         </Card>
