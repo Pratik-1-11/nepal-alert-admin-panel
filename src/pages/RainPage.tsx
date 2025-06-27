@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CloudRain, CloudDrizzle, MapPin, Calendar, RefreshCw, Wind, Thermometer, Gauge, Cloud } from 'lucide-react';
+import { CloudRain, CloudDrizzle, MapPin, Calendar, RefreshCw, Wind, Thermometer, Gauge, Cloud, Waves } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { fetchFloodForecast, getFloodColor } from '@/services/floodService';
 
 // Fix for default markers in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -46,10 +47,23 @@ interface WeatherData {
   name: string;
 }
 
+interface FloodData {
+  date: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  discharge: number;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  station: string;
+}
+
 const RainPage = () => {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [floodData, setFloodData] = useState<FloodData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [floodLoading, setFloodLoading] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Kathmandu');
+  const [showFloodData, setShowFloodData] = useState(false);
   const [weatherLayers, setWeatherLayers] = useState({
     precipitation: true,
     wind: false,
@@ -61,6 +75,7 @@ const RainPage = () => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layersRef = useRef<{[key: string]: L.TileLayer}>({});
+  const floodMarkersRef = useRef<L.Marker[]>([]);
 
   const API_KEY = 'a3cf90bbeab7a32511d2371fd3578fe1';
   const nepalCities = [
@@ -250,12 +265,74 @@ const RainPage = () => {
     return rain1h < 2.5 ? CloudDrizzle : CloudRain;
   };
 
+  const fetchFloodData = async () => {
+    setFloodLoading(true);
+    try {
+      const data = await fetchFloodForecast();
+      setFloodData(data);
+      
+      toast({
+        title: "Flood Data Updated",
+        description: `Fetched flood monitoring data for ${data.length} locations`,
+      });
+    } catch (error) {
+      console.error('Error fetching flood data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch flood data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setFloodLoading(false);
+    }
+  };
+
+  // Update flood markers on map
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    // Clear existing flood markers
+    floodMarkersRef.current.forEach(marker => {
+      mapInstanceRef.current!.removeLayer(marker);
+    });
+    floodMarkersRef.current = [];
+
+    if (showFloodData && floodData.length > 0) {
+      floodData.forEach(flood => {
+        const color = getFloodColor(flood.riskLevel);
+        
+        // Create custom flood marker
+        const floodIcon = L.divIcon({
+          className: 'custom-flood-marker',
+          html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+
+        const marker = L.marker([flood.latitude, flood.longitude], { icon: floodIcon })
+          .addTo(mapInstanceRef.current!);
+        
+        marker.bindPopup(`
+          <div style="min-width: 200px;">
+            <h3 style="margin: 0 0 8px 0; font-weight: bold;">${flood.location}</h3>
+            <p style="margin: 2px 0;"><strong>Risk Level:</strong> ${flood.riskLevel.toUpperCase()}</p>
+            <p style="margin: 2px 0;"><strong>Discharge:</strong> ${flood.discharge.toFixed(2)} m³/s</p>
+            <p style="margin: 2px 0;"><strong>Station:</strong> ${flood.station}</p>
+            <p style="margin: 2px 0;"><strong>Date:</strong> ${new Date(flood.date).toLocaleDateString()}</p>
+          </div>
+        `);
+        
+        floodMarkersRef.current.push(marker);
+      });
+    }
+  }, [showFloodData, floodData]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Nepal Weather Monitor</h1>
-          <p className="text-gray-600">Real-time weather data with interactive weather layers across Nepal</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Nepal Weather & Flood Monitor</h1>
+          <p className="text-gray-600">Real-time weather data with interactive weather layers and flood monitoring across Nepal</p>
         </div>
 
         {/* City Selection and Weather Layer Controls */}
@@ -263,7 +340,7 @@ const RainPage = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Location & Weather Layers
+              Location & Data Layers
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -288,9 +365,60 @@ const RainPage = () => {
                   className="mb-2"
                 >
                   <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Refresh
+                  Refresh Weather
                 </Button>
               </div>
+            </div>
+
+            {/* Flood Data Controls */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Flood Monitoring</h3>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={showFloodData ? "default" : "outline"}
+                  onClick={() => {
+                    setShowFloodData(!showFloodData);
+                    if (!showFloodData && floodData.length === 0) {
+                      fetchFloodData();
+                    }
+                  }}
+                  className={showFloodData ? "bg-blue-600" : ""}
+                >
+                  <Waves className="h-4 w-4 mr-2" />
+                  {showFloodData ? 'Hide' : 'Show'} Flood Data
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={fetchFloodData}
+                  disabled={floodLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${floodLoading ? 'animate-spin' : ''}`} />
+                  Refresh Flood Data
+                </Button>
+              </div>
+              {showFloodData && (
+                <div className="mt-3 text-xs text-gray-600">
+                  <p><strong>Flood Risk Levels:</strong></p>
+                  <div className="flex gap-4 mt-1">
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      Low (&lt;100 m³/s)
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      Medium (100-500 m³/s)
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                      High (500-1000 m³/s)
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-red-600"></div>
+                      Critical (&gt;1000 m³/s)
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Weather Layer Controls */}
@@ -326,7 +454,7 @@ const RainPage = () => {
         {/* Interactive Map */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Interactive Weather Map</CardTitle>
+            <CardTitle>Interactive Weather & Flood Map</CardTitle>
           </CardHeader>
           <CardContent>
             <div 
@@ -343,10 +471,46 @@ const RainPage = () => {
                 <li>• <strong>Pressure:</strong> Atmospheric pressure variations</li>
                 <li>• <strong>Clouds:</strong> Cloud coverage and density</li>
               </ul>
-              <p className="pt-2"><strong>Controls:</strong> Click city markers for detailed data • Pan and zoom to explore</p>
+              <p><strong>Flood Monitoring:</strong> Colored circles show real-time flood risk levels at monitoring stations</p>
+              <p className="pt-2"><strong>Controls:</strong> Click markers for detailed data • Pan and zoom to explore</p>
             </div>
           </CardContent>
         </Card>
+
+        {/* Flood Summary */}
+        {showFloodData && floodData.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Waves className="h-5 w-5" />
+                Current Flood Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {['low', 'medium', 'high', 'critical'].map(level => {
+                  const count = floodData.filter(f => f.riskLevel === level).length;
+                  const color = getFloodColor(level);
+                  
+                  return (
+                    <div key={level} className="text-center">
+                      <div 
+                        className="w-12 h-12 rounded-full mx-auto mb-2 flex items-center justify-center text-white font-bold"
+                        style={{ backgroundColor: color }}
+                      >
+                        {count}
+                      </div>
+                      <p className="text-sm font-medium capitalize">{level} Risk</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 text-xs text-gray-500 text-center">
+                Total monitoring stations: {floodData.length} • Data from Servir-HKH and Open-Meteo
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Current Weather Data */}
         {weatherData && (
@@ -462,7 +626,13 @@ const RainPage = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                 <Calendar className="h-4 w-4" />
-                <span>Last updated: {new Date(weatherData.dt * 1000).toLocaleString()}</span>
+                <span>Weather updated: {new Date(weatherData.dt * 1000).toLocaleString()}</span>
+                {floodData.length > 0 && (
+                  <>
+                    <span className="mx-2">•</span>
+                    <span>Flood data: {floodData.length} stations monitored</span>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
