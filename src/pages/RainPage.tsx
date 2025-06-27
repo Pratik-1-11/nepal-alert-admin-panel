@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { CloudRain, CloudDrizzle, MapPin, Calendar, RefreshCw, Wind, Thermometer, Gauge, Cloud } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.dist.css';
+import 'leaflet/dist/leaflet.css';
 
 // Fix for default markers in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -72,37 +72,42 @@ const RainPage = () => {
     { name: 'Dharan', lat: 26.8149, lon: 87.2824 }
   ];
 
-  // Weather layer configurations
+  // Weather layer configurations with more intense blue for precipitation
   const weatherLayerConfigs = {
     precipitation: {
       url: `https://maps.openweathermap.org/maps/2.0/weather/PA0/{z}/{x}/{y}?appid=${API_KEY}`,
       name: 'Precipitation',
       icon: CloudRain,
-      color: 'bg-blue-500'
+      color: 'bg-blue-600',
+      opacity: 0.8
     },
     wind: {
       url: `https://maps.openweathermap.org/maps/2.0/weather/WND/{z}/{x}/{y}?appid=${API_KEY}`,
       name: 'Wind Speed',
       icon: Wind,
-      color: 'bg-green-500'
+      color: 'bg-green-500',
+      opacity: 0.6
     },
     temperature: {
       url: `https://maps.openweathermap.org/maps/2.0/weather/TA2/{z}/{x}/{y}?appid=${API_KEY}`,
       name: 'Temperature',
       icon: Thermometer,
-      color: 'bg-red-500'
+      color: 'bg-red-500',
+      opacity: 0.6
     },
     pressure: {
       url: `https://maps.openweathermap.org/maps/2.0/weather/APM/{z}/{x}/{y}?appid=${API_KEY}`,
       name: 'Pressure',
       icon: Gauge,
-      color: 'bg-purple-500'
+      color: 'bg-purple-500',
+      opacity: 0.6
     },
     clouds: {
       url: `https://maps.openweathermap.org/maps/2.0/weather/CL/{z}/{x}/{y}?appid=${API_KEY}`,
       name: 'Clouds',
       icon: Cloud,
-      color: 'bg-gray-500'
+      color: 'bg-gray-500',
+      opacity: 0.6
     }
   };
 
@@ -118,11 +123,11 @@ const RainPage = () => {
       attribution: '© OpenStreetMap contributors'
     }).addTo(mapInstanceRef.current);
 
-    // Initialize weather layers
+    // Initialize weather layers with updated opacity
     Object.entries(weatherLayerConfigs).forEach(([key, config]) => {
       layersRef.current[key] = L.tileLayer(config.url, {
         attribution: '© OpenWeatherMap',
-        opacity: 0.6
+        opacity: config.opacity
       });
     });
 
@@ -312,6 +317,7 @@ const RainPage = () => {
               </div>
               <div className="mt-3 text-xs text-gray-500">
                 <p><strong>Tip:</strong> Toggle multiple layers to compare different weather conditions</p>
+                <p><strong>Precipitation:</strong> More intense blue shows heavier rainfall</p>
               </div>
             </div>
           </CardContent>
